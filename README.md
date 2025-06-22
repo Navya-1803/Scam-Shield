@@ -2,7 +2,7 @@
 
 ## Overview
 
-CyberAware is a web-based security analysis tool designed to detect potential scams in SMS messages, URLs, and UPI requests. The application uses pattern matching and keyword analysis to identify suspicious content and provide users with security assessments. Built with Flask and deployed on Replit, it offers a simple yet effective solution for everyday users to validate suspicious digital communications.
+CyberAware is a web-based security analysis tool designed to detect potential scams in SMS messages, URLs, and UPI requests. The application uses pattern matching and keyword analysis to identify suspicious content and provide users with security assessments. Built with Flask, it offers a simple yet effective solution for everyday users to validate suspicious digital communications.
 
 ## System Architecture
 
@@ -68,9 +68,9 @@ CyberAware is a web-based security analysis tool designed to detect potential sc
 - **Google Fonts**: Typography (Inter font family)
 
 ### Infrastructure
-- **Replit**: Hosting platform with autoscale deployment
-- **Nix**: Package management for system dependencies
-- **PostgreSQL**: Database system (available but not currently utilized)
+- **Deployment Platform**: Supports any Python-compatible cloud server
+- **Package Manager**: Nix or pip for system and Python dependencies
+- **Database**: PostgreSQL (available but not currently utilized)
 
 ## Deployment Strategy
 
@@ -81,24 +81,13 @@ CyberAware is a web-based security analysis tool designed to detect potential sc
 
 ### Production Deployment
 - **Server**: Gunicorn WSGI server
-- **Scaling**: Replit autoscale deployment target
+- **Scaling**: Deployable to any cloud host with autoscaling support
 - **Port Configuration**: Application runs on port 5000
 - **Process Management**: Gunicorn handles multiple worker processes
 
 ### Configuration
 - **Environment Variables**: Session secret key from environment
 - **Fallback Values**: Development defaults for local testing
-- **Replit Integration**: Configured for seamless deployment
 
 ## Changelog
 
-```
-Changelog:
-- June 22, 2025. Initial setup
-```
-
-## User Preferences
-
-```
-Preferred communication style: Simple, everyday language.
-```
