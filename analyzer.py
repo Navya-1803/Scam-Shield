@@ -1,5 +1,7 @@
 import re
 import logging
+import requests
+import os
 from urllib.parse import urlparse
 from typing import Dict, List, Tuple
 
@@ -18,12 +20,15 @@ class SecurityAnalyzer:
             'refund', 'tax refund', 'cashback', 'bonus', 'reward',
             'verify account', 'suspended', 'blocked', 'frozen',
             'click here', 'click link', 'verify now', 'update details',
+            'validate account', 'secure paytm', 'win money', 'verify now',
+            'confirm payment', 'update payment', 'secure login',
             
             # Suspicious requests
             'send money', 'transfer funds', 'pay immediately', 'wire transfer',
             'bitcoin', 'cryptocurrency', 'gift card', 'voucher',
             'personal information', 'bank details', 'pin', 'password',
             'otp', 'one time password', 'verification code',
+            'moneytransfer', 'paytransfer', 'upi transfer', 'instant transfer',
             
             # Phishing indicators
             'phishing', 'fake', 'scam', 'fraud', 'suspicious'
@@ -31,9 +36,49 @@ class SecurityAnalyzer:
         
         # Suspicious domain patterns
         self.suspicious_domains = [
-            r'bit\.ly', r'tinyurl\.com', r't\.co', r'short\.link',
-            r'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+',  # IP addresses
-            r'[a-z0-9\-]+\.tk$', r'[a-z0-9\-]+\.ml$', r'[a-z0-9\-]+\.ga$',  # Free domains
+            # URL shorteners
+            r'bit\.ly', r'tinyurl\.com', r't\.co', r'short\.link', r'rb\.gy',
+            r'ow\.ly', r'goo\.gl', r'buff\.ly', r'is\.gd', r'tiny\.cc',
+            
+            # IP addresses
+            r'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+',
+            
+            # Free/suspicious TLDs
+            r'[a-z0-9\-]+\.tk$', r'[a-z0-9\-]+\.ml$', r'[a-z0-9\-]+\.ga$',
+            r'[a-z0-9\-]+\.cf$', r'[a-z0-9\-]+\.ru$', r'[a-z0-9\-]+\.cn$',
+            r'[a-z0-9\-]+\.win$', r'[a-z0-9\-]+\.top$', r'[a-z0-9\-]+\.click$',
+            r'[a-z0-9\-]+\.download$', r'[a-z0-9\-]+\.loan$', r'[a-z0-9\-]+\.racing$',
+            r'[a-z0-9\-]+\.review$', r'[a-z0-9\-]+\.party$', r'[a-z0-9\-]+\.cricket$',
+        ]
+        
+        # Phishing domain patterns (impersonation)
+        self.phishing_patterns = [
+            # Banking/Payment services
+            r'.*paytm.*(?:secure|verify|update|login|validate).*',
+            r'.*phonepe.*(?:secure|verify|update|login|validate).*',
+            r'.*amazon.*(?:secure|verify|update|login|validate|giveaway|offer|win).*',
+            r'.*google.*(?:secure|verify|update|login|validate).*',
+            r'.*facebook.*(?:secure|verify|update|login|validate).*',
+            r'.*whatsapp.*(?:secure|verify|update|login|validate).*',
+            r'.*instagram.*(?:secure|verify|update|login|validate).*',
+            r'.*sbi.*(?:secure|verify|update|login|validate).*',
+            r'.*hdfc.*(?:secure|verify|update|login|validate).*',
+            r'.*icici.*(?:secure|verify|update|login|validate).*',
+            
+            # Generic phishing patterns
+            r'.*(?:secure|verify|update|validate|confirm).*(?:account|payment|upi|wallet).*',
+            r'.*(?:win|prize|lottery|reward|bonus).*(?:money|cash|amount).*',
+            r'.*upi.*(?:pay|transfer|send|receive).*(?:\.in|\.com).*',
+            r'.*(?:click|tap).*(?:here|now|link).*(?:verify|confirm|claim).*',
+        ]
+        
+        # Suspicious URL path patterns
+        self.suspicious_paths = [
+            r'/(?:verify|validate|confirm|update|secure)[-_]?(?:account|payment|upi)',
+            r'/(?:login|signin).*(?:verify|confirm)',
+            r'/(?:win|prize|bonus|reward|giveaway)',
+            r'/(?:moneytransfer|paytransfer|upipay)',
+            r'/(?:claim|redeem).*(?:prize|reward|bonus)',
         ]
         
         # UPI patterns
@@ -44,6 +89,10 @@ class SecurityAnalyzer:
         
         # URL patterns
         self.url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+        
+        # Google Safe Browsing API configuration
+        self.safe_browsing_api_key = os.environ.get('GOOGLE_SAFE_BROWSING_API_KEY')
+        self.safe_browsing_enabled = bool(self.safe_browsing_api_key)
         
     def analyze_content(self, content: str) -> Dict:
         """
@@ -124,32 +173,84 @@ class SecurityAnalyzer:
                 try:
                     parsed = urlparse(url)
                     domain = parsed.netloc.lower()
+                    path = parsed.path.lower()
+                    query = parsed.query.lower()
+                    full_url = url.lower()
                     
                     # Check against suspicious domain patterns
+                    suspicious_domain_found = False
                     for pattern in self.suspicious_domains:
                         if re.search(pattern, domain):
-                            score += 25
-                            result['warnings'].append(f"Suspicious domain detected: {domain}")
+                            score += 30
+                            result['warnings'].append(f"High-risk domain detected: {domain}")
+                            suspicious_domain_found = True
                             break
-                    else:
-                        # Check for other suspicious indicators
-                        if len(domain) > 50:  # Very long domain
+                    
+                    # Check for phishing domain patterns
+                    for pattern in self.phishing_patterns:
+                        if re.search(pattern, domain):
+                            score += 35
+                            result['warnings'].append(f"Phishing domain pattern detected: {domain}")
+                            suspicious_domain_found = True
+                            break
+                    
+                    # Check suspicious URL paths
+                    for pattern in self.suspicious_paths:
+                        if re.search(pattern, path):
+                            score += 25
+                            result['warnings'].append(f"Suspicious URL path detected: {path}")
+                            break
+                    
+                    # Check for UPI-related scam patterns in query parameters
+                    if 'upi=' in query and not any(legit in domain for legit in ['paytm.com', 'phonepe.com', 'googlepay.com']):
+                        score += 20
+                        result['warnings'].append("UPI parameter in non-standard domain detected")
+                    
+                    # Additional suspicious indicators if not already flagged as high-risk
+                    if not suspicious_domain_found:
+                        # Very long domain
+                        if len(domain) > 50:
                             score += 15
                             result['warnings'].append("Unusually long domain name detected")
                         
-                        if domain.count('-') > 3:  # Many hyphens
-                            score += 10
-                            result['warnings'].append("Domain with many hyphens detected")
+                        # Many hyphens in domain
+                        if domain.count('-') > 3:
+                            score += 12
+                            result['warnings'].append("Domain with excessive hyphens detected")
                         
-                        if re.search(r'[0-9]{3,}', domain):  # Many numbers in domain
-                            score += 10
-                            result['warnings'].append("Domain with many numbers detected")
+                        # Many numbers in domain
+                        if re.search(r'[0-9]{4,}', domain):
+                            score += 15
+                            result['warnings'].append("Domain with long number sequence detected")
+                        
+                        # Suspicious keywords in domain/path combination
+                        suspicious_keywords = ['secure', 'verify', 'update', 'validate', 'confirm', 'win', 'prize', 'bonus', 'giveaway']
+                        keyword_count = sum(1 for keyword in suspicious_keywords if keyword in full_url)
+                        if keyword_count >= 2:
+                            score += 20
+                            result['warnings'].append("Multiple suspicious keywords in URL detected")
+                        
+                        # Check for typosquatting patterns
+                        known_brands = ['amazon', 'google', 'facebook', 'paytm', 'phonepe', 'whatsapp', 'instagram']
+                        for brand in known_brands:
+                            if brand in domain and not domain.endswith(f'{brand}.com'):
+                                # Check if it's a legitimate subdomain vs typosquatting
+                                if not (domain.startswith(f'{brand}.') or f'.{brand}.' in domain):
+                                    score += 25
+                                    result['warnings'].append(f"Potential brand impersonation detected: {brand}")
+                    
+                    # Check against Google Safe Browsing API if enabled
+                    if self.safe_browsing_enabled:
+                        safe_browsing_result = self._check_safe_browsing(url)
+                        if safe_browsing_result['is_malicious']:
+                            score += 50
+                            result['warnings'].append(f"URL flagged by Google Safe Browsing: {safe_browsing_result['threat_type']}")
                 
                 except Exception as e:
                     logging.warning(f"Error parsing URL {url}: {str(e)}")
-                    score += 5
+                    score += 8
         
-        return min(score, 40)  # Cap URL score at 40
+        return min(score, 80)  # Increased cap for URL score
     
     def _check_upi_patterns(self, content: str, result: Dict) -> int:
         """Check for UPI payment patterns"""
@@ -204,6 +305,52 @@ class SecurityAnalyzer:
                 result['warnings'].append("Multiple phone numbers detected")
         
         return min(score, 25)  # Cap phone score at 25
+    
+    def _check_safe_browsing(self, url: str) -> Dict:
+        """Check URL against Google Safe Browsing API"""
+        if not self.safe_browsing_enabled:
+            return {'is_malicious': False, 'threat_type': None}
+        
+        try:
+            api_url = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={self.safe_browsing_api_key}"
+            
+            payload = {
+                "client": {
+                    "clientId": "cyberaware-scam-detector",
+                    "clientVersion": "1.0.0"
+                },
+                "threatInfo": {
+                    "threatTypes": [
+                        "MALWARE",
+                        "SOCIAL_ENGINEERING",
+                        "UNWANTED_SOFTWARE",
+                        "POTENTIALLY_HARMFUL_APPLICATION"
+                    ],
+                    "platformTypes": ["ANY_PLATFORM"],
+                    "threatEntryTypes": ["URL"],
+                    "threatEntries": [{"url": url}]
+                }
+            }
+            
+            response = requests.post(api_url, json=payload, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'matches' in data and data['matches']:
+                    threat_type = data['matches'][0].get('threatType', 'UNKNOWN')
+                    return {'is_malicious': True, 'threat_type': threat_type}
+                else:
+                    return {'is_malicious': False, 'threat_type': None}
+            else:
+                logging.warning(f"Safe Browsing API error: {response.status_code}")
+                return {'is_malicious': False, 'threat_type': None}
+                
+        except requests.RequestException as e:
+            logging.warning(f"Safe Browsing API request failed: {str(e)}")
+            return {'is_malicious': False, 'threat_type': None}
+        except Exception as e:
+            logging.error(f"Safe Browsing API unexpected error: {str(e)}")
+            return {'is_malicious': False, 'threat_type': None}
     
     def _add_recommendations(self, result: Dict):
         """Add security recommendations based on analysis"""
