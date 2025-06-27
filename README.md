@@ -72,22 +72,4 @@ CyberAware is a web-based security analysis tool designed to detect potential sc
 - **Package Manager**: Nix or pip for system and Python dependencies
 - **Database**: PostgreSQL (available but not currently utilized)
 
-## Deployment Strategy
-
-### Development Environment
-- **Local Development**: Flask development server with debug mode
-- **Hot Reload**: Automatic restart on code changes
-- **Debug Logging**: Comprehensive logging for development
-
-### Production Deployment
-- **Server**: Gunicorn WSGI server
-- **Scaling**: Deployable to any cloud host with autoscaling support
-- **Port Configuration**: Application runs on port 5000
-- **Process Management**: Gunicorn handles multiple worker processes
-
-### Configuration
-- **Environment Variables**: Session secret key from environment
-- **Fallback Values**: Development defaults for local testing
-
-## Changelog
 
